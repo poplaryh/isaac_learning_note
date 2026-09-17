@@ -48,12 +48,12 @@ parser.add_argument(
 parser.add_argument(
     "--katao",
     type=str,
-    default="/World/katao/katao",
+    default="/home/yh/tianji/mission_docs/mission01_v2/ihihi/katao02.usd",
 )
 parser.add_argument(
-    "--stick-part",
+    "--stick_part",
     type=str,
-    default="/World/stick_part/stick_part",
+    default="/home/yh/tianji/mission_docs/mission01_v2/ihihi/stick_part02.usd",
 )
 parser.add_argument(
     "--pregrasp-height",
@@ -63,12 +63,17 @@ parser.add_argument(
 parser.add_argument(
     "--grasp-height",
     type=float,
-    default=0.08,
+    default=0.086,
 )
 parser.add_argument(
     "--lift-height",
     type=float,
     default=0.20,
+)
+parser.add_argument(
+    "--place-height",
+    type=float,
+    default=-0.085,
 )
 parser.add_argument(
     "--move-offset",
@@ -102,6 +107,11 @@ parser.add_argument(
     default=1.0,
 )
 parser.add_argument(
+    "--dt",
+    type=float,
+    default=0.01,
+)
+parser.add_argument(
     "--tolerance",
     type=float,
     default=0.001,
@@ -121,6 +131,11 @@ parser.add_argument(
     type=int,
     default=30,
 )
+parser.add_argument(
+    "--num_envs",
+    type=int,
+    default=2,
+)
 
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -135,17 +150,16 @@ simulation_app = app_launcher.app
 import numpy as np
 import torch
 import warp as wp
-from pxr import UsdGeom
+from pxr import UsdGeom, UsdPhysics, PhysxSchema, Usd
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, RigidObjectCfg
+from isaaclab.assets import ArticulationCfg, RigidObjectCfg, AssetBaseCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.utils.configclass import configclass
 from isaaclab_assets import FRANKA_PANDA_HIGH_PD_CFG
-from isaaclab.sim.schemas import (
-    RigidBodyPropertiesCfg,
-    MassPropertiesCfg,
-)
+from isaaclab.sim.schemas import RigidBodyPropertiesCfg, MassPropertiesCfg, CollisionPropertiesCfg
+# from isaaclab.sim.schemas import UsdPhysicsRigidBodyCfg, UsdPhysicsCollisionCfg, MassCfg
+from isaaclab_physx.sim.schemas import PhysxSDFMeshPropertiesCfg
 
 
 # cuMotion extension is already known to work in this environment.
@@ -178,6 +192,14 @@ from isaacsim.robot_motion.cumotion import load_cumotion_robot
 # -----------------------------------------------------------------------------
 @configclass
 class SceneCfg(InteractiveSceneCfg):
+    # ground plane
+    ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg())
+
+    # lights
+    dome_light = AssetBaseCfg(
+        prim_path="/World/Light", spawn=sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75))
+    )
+
     # Reuse the Franka that already exists in the USD.
     robot: ArticulationCfg = FRANKA_PANDA_HIGH_PD_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
@@ -187,26 +209,67 @@ class SceneCfg(InteractiveSceneCfg):
     )
 
     katao: RigidObjectCfg = RigidObjectCfg(
-        prim_path="/World/katao/katao",
-        spawn=None,
+        prim_path="{ENV_REGEX_NS}/katao",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=args_cli.katao,
+            # Rigid body
+            rigid_props=RigidBodyPropertiesCfg(
+                rigid_body_enabled=True,
+                kinematic_enabled=False,
+                disable_gravity=False,
+            ),
+
+            # Mass
+            # mass_props=MassPropertiesCfg(
+            #     mass=0.5,
+            # ),
+
+            # Collision
+            collision_props=CollisionPropertiesCfg(
+                collision_enabled=True,
+            ),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.35, 0.6, 0.037057),
+            rot=(1.0, 0.0, 0.0, 0.0),
+        ),
     )
 
-    # stick_part: RigidObjectCfg = RigidObjectCfg(
-    #     prim_path="/World/stick_part/stick_part",
-    #     spawn=None,
-    # )
+    stick_part: RigidObjectCfg = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/stick_part",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=args_cli.stick_part,
+            rigid_props=RigidBodyPropertiesCfg(
+                rigid_body_enabled=True,
+                kinematic_enabled=True,
+                disable_gravity=False,
+            ),
+
+            # mass_props=MassPropertiesCfg(
+            #     mass=0.1,
+            # ),
+
+            collision_props=CollisionPropertiesCfg(
+                collision_enabled=True,
+            ),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.75, 0.0, 0.131),
+            rot=(0.0, -0.707, 0.707, 0.0),
+        ),
+    )
 
 
 
 # -----------------------------------------------------------------------------
 # USD / robot helpers
 # -----------------------------------------------------------------------------
-def get_prim_world_pose(katao):
+def get_prim_world_pose(object01, env_idx=0):
     # katao_state = katao.data.root_state_w[0]
-    katao_state = katao.data.root_link_pose_w[0]
+    object01_state = object01.data.root_link_pose_w[env_idx]
 
     position = (
-        katao_state[:3]
+        object01_state[:3]
         .detach()
         .cpu()
         .numpy()
@@ -214,7 +277,7 @@ def get_prim_world_pose(katao):
     )
 
     quat = (
-        katao_state[3:7]
+        object01_state[3:7]
         .detach()
         .cpu()
         .numpy()
@@ -229,47 +292,18 @@ def get_prim_world_pose(katao):
     ], dtype=np.float32) # xyzw
 
     quat /= np.linalg.norm(quat)
-    print(f"[INFO] katao pose: {position}, quat: {quat}")
+    print(f"[INFO] object01 pose: {position}, quat: {quat}")
 
-    return position, quat
+    #####################测试区域#####################
 
-def get_prim_world_pose_non_rigid(prim_path: str):
-    stage = sim_utils.get_current_stage()
-    prim = stage.GetPrimAtPath(prim_path)
+    # print("root_lin_vel:",
+    #     object01.data.root_link_vel_w[env_idx])
 
-    if not prim.IsValid():
-        raise RuntimeError(
-            f"USD prim does not exist: {prim_path}"
-        )
+    # print("root_ang_vel:",
+    #     object01.data.root_link_ang_vel_w[env_idx])
 
-    matrix = UsdGeom.XformCache().GetLocalToWorldTransform(prim)
-    p = matrix.ExtractTranslation()
-    q = matrix.ExtractRotationQuat()
-
-    position = np.array(
-        [float(p[0]), float(p[1]), float(p[2])],
-        dtype=np.float32,
-    )
-    quat = np.array(
-        [
-            float(q.GetImaginary()[0]),
-            float(q.GetImaginary()[1]),
-            float(q.GetImaginary()[2]),
-            float(q.GetReal()),
-        ],
-        dtype=np.float32,
-    )
-
-    norm = np.linalg.norm(quat)
-    if norm < 1e-8:
-        raise RuntimeError(
-            f"Invalid quaternion at {prim_path}: {quat}"
-        )
-    quat /= norm
-
-    # p0, q0 = sim_utils.resolve_prim_pose(prim)
-    # print(f"prim pose: {p0}, {q0}")
-    print(f"position: {position}, quat: {quat}")
+    # print("root_link_pose_w:",
+    #     object01.data.root_link_pose_w[env_idx])
 
     return position, quat
 
@@ -320,8 +354,8 @@ def get_panda_indices(robot):
     return arm_ids, finger_ids, hand_ids[0]
 
 
-def get_ee_pose(robot, ee_body_id):
-    pose = robot.data.body_pose_w[0, ee_body_id]
+def get_ee_pose(robot, ee_body_id, env_idx=0):
+    pose = robot.data.body_pose_w[env_idx, ee_body_id]
     # print(f"pose: {robot.data.body_names}")
 
     position = (
@@ -346,18 +380,18 @@ def get_ee_pose(robot, ee_body_id):
 # -----------------------------------------------------------------------------
 # cuMotion RobotState helpers
 # -----------------------------------------------------------------------------
-def make_estimated_state(robot, joint_space):
+def make_estimated_state(robot, joint_space, env_idx=0):
     # The joint-space definition is the full Isaac Lab joint_names list,
     # so the measured state must contain the corresponding full 9-DOF vector.
     q = (
-        robot.data.joint_pos[0]
+        robot.data.joint_pos[env_idx]
         .detach()
         .cpu()
         .numpy()
         .astype(np.float32)
     )
     dq = (
-        robot.data.joint_vel[0]
+        robot.data.joint_vel[env_idx]
         .detach()
         .cpu()
         .numpy()
@@ -479,7 +513,7 @@ def set_gripper(robot, finger_ids, value):
         return
 
     target = torch.full(
-        (1, len(finger_ids)),
+        (args_cli.num_envs, len(finger_ids)),
         float(value),
         dtype=torch.float32,
         device=robot.device,
@@ -490,7 +524,24 @@ def set_gripper(robot, finger_ids, value):
         joint_ids=finger_ids,
     )
 
+def make_gripper_state(robot, finger_ids, move, sim, scene):
+    open_steps = max(
+        1,
+        int(args_cli.grasp_wait / args_cli.dt),
+    )
 
+    for _ in range(open_steps):
+        set_gripper(
+            robot,
+            finger_ids,
+            move,
+        )
+
+        scene.write_data_to_sim()
+        sim.step()
+        scene.update(args_cli.dt)
+
+    print("[OK] Gripper movement wait complete.")
 # -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
@@ -503,17 +554,9 @@ def main():
     # -------------------------------------------------------------------------
     # Open USD
     # -------------------------------------------------------------------------
-    print("[INFO] Opening USD...")
-    if sim_utils.open_stage(args_cli.usd) is False:
-        raise RuntimeError(
-            f"Failed to open USD: {args_cli.usd}"
-        )
-
-    print("[INFO] USD opened.")
-
     sim = sim_utils.SimulationContext(
         sim_utils.SimulationCfg(
-            dt=0.01,
+            dt=args_cli.dt,
             device=args_cli.device,
         )
     )
@@ -526,43 +569,19 @@ def main():
     print("[INFO] Creating InteractiveScene...")
     scene = InteractiveScene(
         SceneCfg(
-            num_envs=1,
+            num_envs=args_cli.num_envs,
             env_spacing=2.0,
         )
     )
 
     print("[INFO] Resetting simulation...")
+
     sim.reset()
     scene.update(sim.get_physics_dt())
 
     robot = scene["robot"]
     katao = scene["katao"]
-    # stick_part = scene["stick_part"]
-
-    ########################
-    # import torch
-
-    # # 绕 Z 轴旋转 90°
-    # quat_z90_wxyz = torch.tensor(
-    #     [0.70710678, 0.0, 0.0, 0.70710678],
-    #     device=sim.device,
-    #     dtype=torch.float32,
-    # )
-
-    # # 当前 katao 的位置
-    # get_prim_world_pose(katao)
-    # pos = katao.data.root_link_pose_w[0, :3].clone()
-
-    # # 设置位置 + 新的旋转
-    # new_pose = torch.cat([
-    #     pos,
-    #     quat_z90_wxyz,
-    # ]).unsqueeze(0)
-
-    # katao.write_root_pose_to_sim(new_pose)
-    # get_prim_world_pose(katao)
-    # return
-    ########################
+    stick_part = scene["stick_part"]
 
     arm_ids, finger_ids, ee_body_id = get_panda_indices(robot)
 
@@ -583,31 +602,12 @@ def main():
     # Read katao
     # -------------------------------------------------------------------------
     katao_pos, katao_quat = get_prim_world_pose(katao)
-    get_prim_world_pose_non_rigid(args_cli.katao)
-    stick_part_pos, stick_part_quat = get_prim_world_pose_non_rigid(args_cli.stick_part)
-    return
+    stick_part_pos, stick_part_quat = get_prim_world_pose(stick_part)
 
     initial_ee_pos, initial_ee_quat = get_ee_pose(
         robot,
         ee_body_id,
     )
-
-    # -------------------------------------------------------------------------
-    # test katao prim children
-    # from pxr import Usd
-
-    # stage = sim_utils.get_current_stage()
-
-    # prim = stage.GetPrimAtPath(args_cli.katao)
-    # from pxr import UsdPhysics
-
-    # print("RigidBodyAPI:", prim.HasAPI(UsdPhysics.RigidBodyAPI))
-
-    # rb_api = UsdPhysics.RigidBodyAPI(prim)
-
-    # print("kinematic:", rb_api.GetKinematicEnabledAttr().Get())
-    # return
-    # -------------------------------------------------------------------------
 
     print("\n================ TARGET READ ===============================")
     print(
@@ -660,14 +660,11 @@ def main():
     #     "franka"
     # )
 
-
     cumotion_robot = load_cumotion_robot(
         directory="/home/yh/cumotion_robots/franka",
         urdf_filename="robot.urdf",
         xrdf_filename="robot.xrdf",
     )
-
-
 
     print(
         "[OK] load_cumotion_supported_robot('franka')"
@@ -681,17 +678,6 @@ def main():
     robot_site_space = (
         cumotion_robot.robot_description.tool_frame_names()
     )
-    #############################################
-    # print("[INFO] cuMotion robot description:")
-    # desc = cumotion_robot.robot_description
-    # print(type(desc))
-    # print(desc.tool_frame_names())
-    # print([
-    #     x for x in dir(desc)
-    #     if not x.startswith("_")
-    # ])
-    # print('end of robot description')
-    ##############################################
 
     if len(robot_joint_space) != robot.num_joints:
         raise RuntimeError(
@@ -753,10 +739,6 @@ def main():
     )
 
     cfg = controller.get_rmp_flow_config()
-    # cfg.set_param(
-    #     "cspace_target_rmp/metric_scalar",
-    #     0.9,
-    # )
 
     ###########################################
     cfg.set_param("cspace_target_rmp/metric_scalar", 1.0)
@@ -764,8 +746,6 @@ def main():
     cfg.set_param("collision_rmp/metric_scalar", 0.0)
 
     cfg.set_param("target_rmp/max_metric_scalar", 1000.0)
-
-
 
     ###########################################
 
@@ -797,8 +777,17 @@ def main():
         dtype=np.float32,
     )
 
-    transport = katao_pos + np.asarray(
-        args_cli.move_offset,
+    # transport = katao_pos + np.asarray(
+    #     args_cli.move_offset,
+    #     dtype=np.float32,
+    # )
+    transport = stick_part_pos + np.asarray(
+        [0.0, 0.0, args_cli.lift_height],
+        dtype=np.float32,
+    )
+
+    place = transport + np.asarray(
+        [0.0, 0.0, args_cli.place_height],
         dtype=np.float32,
     )
 
@@ -807,7 +796,7 @@ def main():
     print(f"[INFO] GRASP     : {grasp}")
     print(f"[INFO] LIFT      : {lift}")
     print(f"[INFO] TRANSPORT : {transport}")
-
+    print(f"[INFO] PLACE     : {place}")
     # -------------------------------------------------------------------------
     # Warmup: leave the physics/articulation stable before calling cuMotion.
     # -------------------------------------------------------------------------
@@ -910,7 +899,6 @@ def main():
                 t,
             )
 
-            q_cmd = desired.joints.positions
 
             if desired is None:
                 raise RuntimeError(
@@ -984,53 +972,6 @@ def main():
         "\n================ EXECUTION ================================"
     )
 
-    # q1, p1 = get_ee_pose(
-    #     robot,
-    #     ee_body_id,
-    # )
-    # estimated1 = make_estimated_state(
-    #     robot,
-    #     robot_joint_space,
-    # )
-
-    # setpoint1 = make_setpoint_state(
-    #     tool_frame,
-    #     robot_site_space,
-    #     q1,
-    #     p1,
-    # )
-    # initial_joints = robot.data.joint_pos[0].detach().cpu().numpy()
-    # print("[STEP] controller.reset() ...")
-
-    # reset_ok = controller.reset(
-    #     estimated1,
-    #     setpoint1,
-    #     t=0.0,
-    # )
-
-    # print(
-    #     f"[INFO] controller.reset() -> {reset_ok}"
-    # )
-
-    # if not reset_ok:
-    #     raise RuntimeError(
-    #         f"cuMotion reset failed in phase {phase_name}"
-    #     )
-
-    # t = 0.0
-    # desired = controller.forward(
-    #     estimated1,
-    #     setpoint1,
-    #     t=0.0,
-    # )
-
-    # q_cmd1 = desired.joints.positions
-    # print('initial joints:', initial_joints)
-    # print('q_cmd1:', q_cmd1)
-    # print("difference:", np.linalg.norm(initial_joints[:-2] - q_cmd1))
-    # print("difference:", initial_joints[:-2] - q_cmd1)
-
-
     run_phase(
         "PREGRASP",
         pregrasp,
@@ -1047,23 +988,13 @@ def main():
         "\n[PHASE] CLOSE_GRIPPER"
     )
 
-    close_steps = max(
-        1,
-        int(args_cli.grasp_wait / dt),
+    make_gripper_state(
+        robot,
+        finger_ids,
+        args_cli.close,
+        sim,
+        scene,
     )
-
-    for _ in range(close_steps):
-        set_gripper(
-            robot,
-            finger_ids,
-            args_cli.close,
-        )
-
-        scene.write_data_to_sim()
-        sim.step()
-        scene.update(dt)
-
-    print("[OK] Gripper close wait complete.")
 
     run_phase(
         "LIFT",
@@ -1075,6 +1006,20 @@ def main():
         "TRANSPORT",
         transport,
         args_cli.close,
+    )
+
+    run_phase(
+        "PLACE",
+        place,
+        args_cli.close,
+    )
+
+    make_gripper_state(
+        robot,
+        finger_ids,
+        args_cli.open,
+        sim,
+        scene,
     )
 
     # -------------------------------------------------------------------------
