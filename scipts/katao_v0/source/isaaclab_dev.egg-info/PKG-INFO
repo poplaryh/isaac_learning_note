@@ -1,0 +1,43 @@
+Metadata-Version: 2.4
+Name: isaaclab-dev
+Version: 0.1.0
+Summary: Isaac Lab source checkout development environment.
+Requires-Python: <3.13,>=3.12
+Requires-Dist: isaaclab
+Requires-Dist: isaaclab-assets
+Requires-Dist: isaaclab-contrib
+Requires-Dist: isaaclab-experimental
+Requires-Dist: isaaclab-newton[all]
+Requires-Dist: isaaclab-ov
+Requires-Dist: isaaclab-ovphysx
+Requires-Dist: isaaclab-physx[newton]
+Requires-Dist: isaaclab-ppisp
+Requires-Dist: isaaclab-rl[rsl-rl]
+Requires-Dist: isaaclab-tasks
+Requires-Dist: isaaclab-tasks-experimental
+Requires-Dist: isaaclab-visualizers
+Requires-Dist: torch==2.10.0
+Requires-Dist: torchaudio==2.10.0
+Requires-Dist: torchvision==0.25.0
+Provides-Extra: contrib
+Requires-Dist: isaaclab-contrib; extra == "contrib"
+Provides-Extra: mimic
+Requires-Dist: isaaclab-mimic; extra == "mimic"
+Provides-Extra: newton
+Requires-Dist: isaaclab-newton[all]; extra == "newton"
+Requires-Dist: isaaclab-physx[newton]; extra == "newton"
+Requires-Dist: isaaclab-visualizers[newton]; extra == "newton"
+Provides-Extra: ov
+Requires-Dist: isaaclab-ovphysx[ovphysx]; extra == "ov"
+Provides-Extra: rl
+Requires-Dist: isaaclab-rl[rsl-rl]; extra == "rl"
+Provides-Extra: rl-all
+Requires-Dist: isaaclab-rl[all]; extra == "rl-all"
+Provides-Extra: rtx
+Requires-Dist: isaaclab-ov[ovrtx]; extra == "rtx"
+Provides-Extra: all
+Requires-Dist: isaaclab-mimic; extra == "all"
+Requires-Dist: isaaclab-newton[all]; extra == "all"
+Requires-Dist: isaaclab-physx[newton]; extra == "all"
+Requires-Dist: isaaclab-rl[all]; extra == "all"
+Requires-Dist: isaaclab-visualizers[all]; extra == "all"

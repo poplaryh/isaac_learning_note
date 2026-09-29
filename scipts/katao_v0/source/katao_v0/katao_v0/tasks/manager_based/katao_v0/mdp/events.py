@@ -166,9 +166,9 @@ def reset_to_recorded_state(
     robot.reset(env_ids)
     katao.reset(env_ids)
     
-    print('-----------------------')
-    print('reset to recorded state!!!')
-    print('-----------------------')
+    # print('-----------------------')
+    # print('reset to recorded state!!!')
+    # print('-----------------------')
 
     # robot.set_joint_position_target_index(
     #     target=joint_pos,

@@ -206,29 +206,10 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=["panda_joint.*"], 
         scale=1, use_zero_offset=True,
-        clip={"panda_joint.*": (-0.5, 0.5)},
+        clip={"panda_joint.*": (-0.04, 0.04)},
     )
 
 
-
-# @configclass
-# class ObservationsCfg:
-    # """Observation specifications for the MDP."""
-
-    # @configclass
-    # class PolicyCfg(ObsGroup):
-    #     """Observations for policy group."""
-
-    #     # observation terms (order preserved)
-    #     joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
-    #     joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel)
-
-    #     def __post_init__(self) -> None:
-    #         self.enable_corruption = False
-    #         self.concatenate_terms = True
-
-    # # observation groups
-    # policy: PolicyCfg = PolicyCfg()
 @configclass
 class ObservationsCfg:
 
@@ -305,13 +286,33 @@ class ObservationsCfg:
             },
         )
 
-        # -----------------------------
-        # Previous action
-        # -----------------------------
+        katao_stick_xy = ObsTerm(
+            func=observations.katao_stick_xy,
+            params={
+                "asset_cfg": SceneEntityCfg("katao"),
+            },
+        )
+        
+        katao_stick_z = ObsTerm(
+            func=observations.katao_stick_z,
+            params={
+                "asset_cfg": SceneEntityCfg("katao"),
+            },
+        )
 
-        # previous_action = ObsTerm(
-        #     func=observations.previous_action,
-        # )
+        katao_orientation_pipe = ObsTerm(
+            func=observations.katao_orientation_pipe,
+            params={
+                "asset_cfg": SceneEntityCfg("katao"),
+            },
+        )
+
+        katao_orientation_z = ObsTerm(
+            func=observations.katao_orientation_z,
+            params={
+                "asset_cfg": SceneEntityCfg("katao"),
+            },
+        )
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
@@ -334,43 +335,83 @@ class EventCfg:
 class RewardsCfg:
 
     # 存活奖励
-    alive = RewTerm(
-        func=rewards.alive_reward,
-        weight=1.0,
-    )
+    # alive = RewTerm(
+    #     func=rewards.alive_reward,
+    #     weight=1.0,
+    # )
 
     # 动作惩罚
-    action_penalty = RewTerm(
-        func=rewards.action_penalty,
-        weight=-0.01,
-    )
+    # action_penalty = RewTerm(
+    #     func=rewards.action_penalty,
+    #     weight=-0.01,
+    # )
 
     # 关节速度惩罚
-    joint_velocity_penalty = RewTerm(
-        func=rewards.joint_velocity_penalty,
-        weight=-0.001,
+    # joint_velocity_penalty = RewTerm(
+    #     func=rewards.joint_velocity_penalty,
+    #     weight=-0.001,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg(
+    #             "robot",
+    #             joint_names=[
+    #                 "panda_joint1",
+    #                 "panda_joint2",
+    #                 "panda_joint3",
+    #                 "panda_joint4",
+    #                 "panda_joint5",
+    #                 "panda_joint6",
+    #                 "panda_joint7",
+    #                 # "panda_finger_joint1",
+    #                 # "panda_finger_joint2",
+    #             ],
+    #         ),
+    #     },
+    # )
+
+    # 位置奖励
+    # katao_alignment_reward = RewTerm(
+    #     func=rewards.katao_alignment_reward,
+    #     weight=1.0,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("katao"),
+    #     },
+    # )
+
+    katao_xy_position_reward = RewTerm(
+        func=rewards.katao_xy_reward,
+        weight=5.0,
         params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=[
-                    "panda_joint1",
-                    "panda_joint2",
-                    "panda_joint3",
-                    "panda_joint4",
-                    "panda_joint5",
-                    "panda_joint6",
-                    "panda_joint7",
-                    # "panda_finger_joint1",
-                    # "panda_finger_joint2",
-                ],
-            ),
+            "asset_cfg": SceneEntityCfg("katao"),
         },
     )
 
-    # 位置奖励
-    position_reward = RewTerm(
-        func=rewards.katao_aligment_reward,
-        weight=1.0,
+    katao_z_position_reward = RewTerm(
+        func=rewards.katao_z_reward,
+        weight=5.0,
+        params={
+            "asset_cfg": SceneEntityCfg("katao"),
+        },
+    )
+
+    katao_orientation_pipe_reward = RewTerm(
+        func=rewards.katao_orientation_pipe_reward,
+        weight=3.0,
+        params={
+            "asset_cfg": SceneEntityCfg("katao"),
+        },
+    )
+
+    katao_orientation_z_reward = RewTerm(
+        func=rewards.katao_orientation_z_reward,
+        weight=3.0,
+        params={
+            "asset_cfg": SceneEntityCfg("katao"),
+        },
+    )
+
+    katao_success_reward = RewTerm(
+        func=rewards.success_reward,
+        weight=100.0,
         params={
             "asset_cfg": SceneEntityCfg("katao"),
         },
@@ -383,6 +424,13 @@ class TerminationsCfg:
 
     # (1) Time out
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+
+    # (2) Success
+    success = DoneTerm(
+        func=terminations.success,
+        params={
+            "asset_cfg": SceneEntityCfg("katao"),
+        })
 
 
 
@@ -403,7 +451,7 @@ class KataoV0EnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 1
-        self.episode_length_s = 4
+        self.episode_length_s = 10
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings

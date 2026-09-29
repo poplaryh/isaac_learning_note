@@ -1,0 +1,2 @@
+[isaaclab.tasks]
+katao_v0 = katao_v0.tasks
